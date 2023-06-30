@@ -5,106 +5,60 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 )
 
 func client(listen string, server string, token string, to string) {
-	lis, err := net.Listen("tcp", listen)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer lis.Close()
-
 	auth := token[:3]
 	key := GenerateKey(token)
 
-	for {
-		conn, err := lis.Accept()
+	if listen == `-` {
+		local := NewStdReadWriteCloser()
+		localCloser := &OnceCloser{Closer: local}
+		defer localCloser.Close()
+
+		remote, bodyReader, err := CreateProxyConnection(server, auth, key, to)
 		if err != nil {
-			time.Sleep(time.Second * 5)
-			continue
+			log.Println(err.Error())
+			return
 		}
-		go func(local io.ReadWriteCloser) {
-			closeLocal := &sync.Once{}
-			defer closeLocal.Do(func() { local.Close() })
-			remote, bodyReader, err := CreateProxyConnection(server, auth, key, to)
+		remoteCloser := &OnceCloser{Closer: remote}
+		defer remoteCloser.Close()
+
+		bridge(local, localCloser, remote, bodyReader, remoteCloser, key)
+	} else {
+		lis, err := net.Listen("tcp", listen)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer lis.Close()
+
+		for {
+			conn, err := lis.Accept()
 			if err != nil {
-				log.Println(err.Error())
-				return
+				time.Sleep(time.Second * 5)
+				continue
 			}
-			closeRemote := &sync.Once{}
-			defer closeRemote.Do(func() { remote.Close() })
 
-			var wg sync.WaitGroup
-			wg.Add(2)
+			go func(local net.Conn) {
+				localCloser := &OnceCloser{Closer: local}
+				defer localCloser.Close()
 
-			go func() {
-				defer wg.Done()
-				defer closeLocal.Do(func() { local.Close() })
-				defer closeRemote.Do(func() { remote.Close() })
-
-				if n := bodyReader.Buffered(); n > 0 {
-					buffer := make([]byte, n)
-					if _, err := bodyReader.Read(buffer); err != nil {
-						return
-					}
-					data, err := EncryptStream(buffer, key)
-					if err != nil {
-						return
-					}
-					if _, err := local.Write(data); err != nil {
-						return
-					}
+				remote, bodyReader, err := CreateProxyConnection(server, auth, key, to)
+				if err != nil {
+					log.Println(err.Error())
+					return
 				}
+				remoteCloser := &OnceCloser{Closer: remote}
+				defer remoteCloser.Close()
 
-				buffer := make([]byte, 32*1024)
-
-				for {
-					n, err := remote.Read(buffer)
-					if err != nil {
-						return
-					}
-					data, err := DecryptStream(buffer[:n], key)
-					if err != nil {
-						return
-					}
-					if _, err := local.Write(data); err != nil {
-						return
-					}
-
-				}
-			}()
-
-			go func() {
-				defer wg.Done()
-				defer closeLocal.Do(func() { local.Close() })
-				defer closeRemote.Do(func() { remote.Close() })
-
-				buffer := make([]byte, 32*1024)
-
-				for {
-					n, err := local.Read(buffer)
-					if err != nil {
-						return
-					}
-					data, err := EncryptStream(buffer[:n], key)
-					if err != nil {
-						return
-					}
-					if _, err := remote.Write(data); err != nil {
-						return
-					}
-				}
-			}()
-
-			wg.Wait()
-		}(conn)
+				bridge(local, localCloser, remote, bodyReader, remoteCloser, key)
+			}(conn)
+		}
 	}
 }
 

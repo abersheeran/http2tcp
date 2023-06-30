@@ -4,7 +4,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"sync"
 )
 
 const (
@@ -38,8 +37,8 @@ func server(listen string, token string) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		closeRemote := &sync.Once{}
-		defer closeRemote.Do(func() { remote.Close() })
+		remoteCloser := &OnceCloser{Closer: remote}
+		defer remoteCloser.Close()
 
 		w.Header().Add(`Content-Length`, `0`)
 		w.WriteHeader(http.StatusSwitchingProtocols)
@@ -49,84 +48,17 @@ func server(listen string, token string) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		closeLocal := &sync.Once{}
-		defer closeLocal.Do(func() { local.Close() })
+		localCloser := &OnceCloser{Closer: local}
+		defer localCloser.Close()
 
 		log.Println(r.RemoteAddr, `->`, target, `connected`)
 		defer log.Println(r.RemoteAddr, `->`, target, `closed`)
 
-		var wg sync.WaitGroup
-		wg.Add(2)
+		if err := bio.Writer.Flush(); err != nil {
+			return
+		}
 
-		go func() {
-			defer wg.Done()
-			defer closeLocal.Do(func() { local.Close() })
-			defer closeRemote.Do(func() { remote.Close() })
-
-			if n := bio.Reader.Buffered(); n > 0 {
-				buffer := make([]byte, n)
-				if _, err := bio.Reader.Read(buffer); err != nil {
-					return
-				}
-
-				data, err := DecryptStream(buffer, key)
-				if err != nil {
-					return
-				}
-				if _, err := remote.Write(data); err != nil {
-					return
-				}
-
-			}
-
-			buffer := make([]byte, 32*1024)
-
-			for {
-				n, err := local.Read(buffer)
-				if err != nil {
-					return
-				}
-
-				data, err := DecryptStream(buffer[:n], key)
-				if err != nil {
-					return
-				}
-				if _, err := remote.Write(data); err != nil {
-					return
-				}
-
-			}
-		}()
-
-		go func() {
-			defer wg.Done()
-			defer closeLocal.Do(func() { local.Close() })
-			defer closeRemote.Do(func() { remote.Close() })
-
-			if err := bio.Writer.Flush(); err != nil {
-				return
-			}
-
-			buffer := make([]byte, 32*1024)
-
-			for {
-				n, err := remote.Read(buffer)
-				if err != nil {
-					return
-				}
-
-				data, err := EncryptStream(buffer[:n], key)
-				if err != nil {
-					return
-				}
-				if _, err := local.Write(data); err != nil {
-					return
-				}
-
-			}
-		}()
-
-		wg.Wait()
+		bridge(remote, remoteCloser, local, bio.Reader, localCloser, key)
 	})
 	http.ListenAndServe(listen, nil)
 }

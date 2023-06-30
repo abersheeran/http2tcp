@@ -44,7 +44,9 @@ func main() {
 				os.Exit(1)
 			}
 
-			log.Println(fmt.Sprintf("http2tcp client listen on %s, target %s", listen, target))
+			if listen != `-` {
+				log.Println(fmt.Sprintf("http2tcp client listen on %s, target %s", listen, target))
+			}
 			client(listen, serverUrl, token, strings.TrimPrefix(target, "http://"))
 		},
 	}
