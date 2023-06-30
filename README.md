@@ -2,20 +2,26 @@
 
 将 HTTP 链接转换为加密 TCP 通道。参考了 [http2tcp](https://github.com/movsb/http2tcp) 的实现。
 
+## 安装
+
+在 GitHub release 页面下载 GitHub action 自动构建发布的二进制文件，或者自行构建。
+
 ## 使用
 
 如下命令产生的结果：服务端监听 `8080` 端口，客户端将 `8081` 端口的请求转发到服务端的 `6379` 端口。
-
-### 服务端
 
 ```bash
 ./http2tcp server -l :8080 -a longlongauthtoken
 ```
 
-### 客户端
+```bash
+./http2tcp client -s serverhost:8080 -a longlongauthtoken -t 127.0.0.1:6379 -l :8081
+```
+
+### 作为 `ssh` 的 `ProxyCommand` 使用
 
 ```bash
-./http2tcp client -s serverhost:8080 -a longlongauthtoken -l :8081 -t 127.0.0.1:6379
+./http2tcp client -s serverhost:8080 -a longlongauthtoken -t 127.0.0.1:22 -l -
 ```
 
 ## 原理
