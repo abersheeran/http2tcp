@@ -15,7 +15,7 @@
 ```
 
 ```bash
-./http2tcp client -s serverhost:8080 -a longlongauthtoken -t 127.0.0.1:6379 -l :8081
+./http2tcp client -s serverhost:8080 -a longlongauthtoken -t 127.0.0.1:6379 -l 127.0.0.1:8081
 ```
 
 ### 作为 `ssh` 的 `ProxyCommand` 使用
