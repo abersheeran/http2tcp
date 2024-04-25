@@ -29,7 +29,7 @@ func client(listen string, server string, token string, to string) {
 		remoteCloser := &OnceCloser{Closer: remote}
 		defer remoteCloser.Close()
 
-		bridge(local, localCloser, remote, bodyReader, remoteCloser, key)
+		bridge(local, localCloser, remote, bodyReader, remoteCloser)
 	} else {
 		lis, err := net.Listen("tcp", listen)
 		if err != nil {
@@ -56,7 +56,7 @@ func client(listen string, server string, token string, to string) {
 				remoteCloser := &OnceCloser{Closer: remote}
 				defer remoteCloser.Close()
 
-				bridge(local, localCloser, remote, bodyReader, remoteCloser, key)
+				bridge(local, localCloser, remote, bodyReader, remoteCloser)
 			}(conn)
 		}
 	}

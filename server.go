@@ -58,7 +58,7 @@ func server(listen string, token string) {
 			return
 		}
 
-		bridge(remote, remoteCloser, local, bio.Reader, localCloser, key)
+		bridge(remote, remoteCloser, local, bio.Reader, localCloser)
 	})
 	http.ListenAndServe(listen, nil)
 }
